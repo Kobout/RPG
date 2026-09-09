@@ -1,0 +1,7 @@
+out/
+out-test/
+RPG Batalhas/
+rpg.jar
+save.dat
+historico.log
+*.class
