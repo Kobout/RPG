@@ -24,8 +24,12 @@ jobs:
       - name: Criar jar
         run: jar --create --file rpg.jar --main-class view.TelaPrincipal -C out . -C resources .
 
+      - name: Desativar Windows Defender (só nesta máquina descartável)
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
+        shell: powershell
+
       - name: Gerar executavel com jpackage
-        run: jpackage --input . --name "RPG Batalhas" --main-jar rpg.jar --main-class view.TelaPrincipal --icon app.ico --type app-image --win-console
+        run: jpackage --input . --name "RPG Batalhas" --main-jar rpg.jar --main-class view.TelaPrincipal --icon app.ico --type app-image --win-console --verbose
 
       - name: Publicar resultado
         uses: actions/upload-artifact@v4
