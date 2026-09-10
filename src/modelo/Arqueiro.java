@@ -20,8 +20,16 @@ public class Arqueiro extends Personagem {
     @Override
     public String atacar(Personagem alvo) {
         boolean critico = RANDOM.nextDouble() < CHANCE_CRITICO;
-        int poderAtaque = critico ? this.getAtaque() * 2 : this.getAtaque();
+        Elemento elemento = getElementoArma();
+        double modificador = alvo.getModificadorDano(elemento);
+        int poderBase = critico ? this.getAtaque() * 2 : this.getAtaque();
+        int poderAtaque = (int) Math.round(poderBase * modificador);
         int danoAplicado = aplicarDano(alvo, poderAtaque);
+
+        if (alvo.isUltimoAtaqueBloqueado()) {
+            return nome + " dispara uma flecha em " + alvo.getNome()
+                    + ", mas " + alvo.getNome() + " BLOQUEOU o golpe!";
+        }
 
         String mensagem = nome + " dispara uma flecha em " + alvo.getNome();
         if (critico) {
@@ -29,6 +37,15 @@ public class Arqueiro extends Personagem {
             int danoVeneno = Math.max(1, (int) Math.round(this.getAtaque() * 0.1));
             alvo.aplicarVeneno(2, danoVeneno);
             mensagem += " A flecha estava envenenada!";
+        } else if (elemento == Elemento.VENENO) {
+            int danoVeneno = Math.max(1, (int) Math.round(this.getAtaque() * 0.1));
+            alvo.aplicarVeneno(2, danoVeneno);
+            mensagem += " (flecha envenenada pela arma)";
+        }
+        if (modificador > 1.0) {
+            mensagem += " (SUPER EFETIVO!)";
+        } else if (modificador < 1.0 && elemento != Elemento.NENHUM) {
+            mensagem += " (resistido)";
         }
         mensagem += " e causa " + danoAplicado + " de dano!";
         return mensagem;

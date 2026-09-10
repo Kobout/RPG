@@ -1,5 +1,6 @@
 package view;
 
+import modelo.Clerigo;
 import modelo.Mago;
 import modelo.Personagem;
 import modelo.RepositorioHerois;
@@ -42,6 +43,14 @@ public class TelaPvP extends JFrame {
         setSize(500, 500);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
+
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                Musica.tocar("menu.wav");
+            }
+        });
+        Musica.tocar("batalha.wav");
 
         List<Personagem> herois = RepositorioHerois.listar();
 
@@ -155,6 +164,8 @@ public class TelaPvP extends JFrame {
         p.curarTotalmente();
         if (p instanceof Mago) {
             ((Mago) p).restaurarManaTotal();
+        } else if (p instanceof Clerigo) {
+            ((Clerigo) p).restaurarFeTotal();
         }
     }
 }

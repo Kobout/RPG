@@ -40,7 +40,22 @@ public class Monstro extends Personagem {
     @Override
     public String atacar(Personagem alvo) {
         int danoAplicado = aplicarDano(alvo, this.getAtaque());
+        if (alvo.isUltimoAtaqueBloqueado()) {
+            return nome + " ataca " + alvo.getNome() + ", mas " + alvo.getNome() + " BLOQUEOU o golpe!";
+        }
+        if (alvo.isUltimoAtaqueEsquivado()) {
+            return nome + " ataca " + alvo.getNome() + ", mas " + alvo.getNome() + " ESQUIVOU do golpe!";
+        }
         return nome + " ataca " + alvo.getNome() + " e causa " + danoAplicado + " de dano!";
+    }
+
+    // A fraqueza fixa do monstro/chefão soma-se a qualquer resistência/fraqueza vinda de itens
+    @Override
+    public double getModificadorDano(Elemento elemento) {
+        if (elemento != Elemento.NENHUM && elemento == fraqueza) {
+            return Configuracao.getDouble("mago.bonusElementoFraco", 1.5);
+        }
+        return super.getModificadorDano(elemento);
     }
 
     // Escala com o NÍVEL do herói. Cada criatura tem um perfil de atributos diferente,
@@ -83,9 +98,10 @@ public class Monstro extends Personagem {
         int vidaBase = 35 + RANDOM.nextInt(16);
         int defesaBase = 4 + RANDOM.nextInt(5);
 
-        int ataque = Math.max(1, (int) Math.round(ataqueBase * fator * multAtaque));
-        int vida = Math.max(10, (int) Math.round(vidaBase * fator * multVida));
-        int defesa = Math.max(1, (int) Math.round(defesaBase * fator * multDefesa));
+        double fatorDificuldade = ProgressoDificuldade.getAtual().getMultiplicadorInimigos();
+        int ataque = Math.max(1, (int) Math.round(ataqueBase * fator * multAtaque * fatorDificuldade));
+        int vida = Math.max(10, (int) Math.round(vidaBase * fator * multVida * fatorDificuldade));
+        int defesa = Math.max(1, (int) Math.round(defesaBase * fator * multDefesa * fatorDificuldade));
 
         return new Monstro(nome, ataque, vida, defesa, Elemento.NENHUM, regenera);
     }

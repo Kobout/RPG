@@ -10,30 +10,41 @@ public class TelaPrincipal extends JFrame {
     public TelaPrincipal() {
         setTitle("RPG - Menu Principal");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(320, 340);
+        setSize(340, 460);
         setLocationRelativeTo(null);
-        setLayout(new GridLayout(6, 1, 10, 10));
+        setLayout(new GridLayout(9, 1, 8, 8));
 
-        JButton btnCadastrar = new JButton("Cadastrar Personagem");
-        JButton btnListar = new JButton("Listar Personagens");
         JButton btnBatalhar = new JButton("Batalhar");
         JButton btnInventario = new JButton("Inventário");
+        JButton btnFicha = new JButton("Ficha do Personagem");
         JButton btnLoja = new JButton("Loja");
-        JButton btnPvP = new JButton("Duelo entre Heróis (PvP)");
+        JButton btnPvP = new JButton("Duelo entre Heróis (PvP local)");
+        JButton btnMultiplayer = new JButton("Batalha Online (com um amigo)");
+        JButton btnDificuldade = new JButton("Dificuldade");
+        JButton btnConquistas = new JButton("Conquistas");
+        JButton btnConfiguracoes = new JButton("Configurações");
 
-        btnCadastrar.addActionListener(e -> new TelaCadastro().setVisible(true));
-        btnListar.addActionListener(e -> new TelaListagem().setVisible(true));
         btnBatalhar.addActionListener(e -> new TelaBatalha().setVisible(true));
         btnInventario.addActionListener(e -> new TelaInventario().setVisible(true));
+        btnFicha.addActionListener(e -> new TelaFichaPersonagem().setVisible(true));
         btnLoja.addActionListener(e -> new TelaLoja().setVisible(true));
         btnPvP.addActionListener(e -> new TelaPvP().setVisible(true));
+        btnMultiplayer.addActionListener(e -> new TelaMultiplayer().setVisible(true));
+        btnDificuldade.addActionListener(e -> new TelaDificuldade().setVisible(true));
+        btnConquistas.addActionListener(e -> new TelaConquistas().setVisible(true));
+        btnConfiguracoes.addActionListener(e -> new TelaConfiguracoes().setVisible(true));
 
-        add(btnCadastrar);
-        add(btnListar);
         add(btnBatalhar);
         add(btnInventario);
+        add(btnFicha);
         add(btnLoja);
         add(btnPvP);
+        add(btnMultiplayer);
+        add(btnDificuldade);
+        add(btnConquistas);
+        add(btnConfiguracoes);
+
+        Musica.tocar("menu.wav");
     }
 
     public static void main(String[] args) {

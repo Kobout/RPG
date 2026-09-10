@@ -2,9 +2,12 @@ package view;
 
 import modelo.Arqueiro;
 import modelo.Chefao;
+import modelo.Clerigo;
 import modelo.Configuracao;
+import modelo.Elemento;
 import modelo.GerenciadorDeBatalha;
 import modelo.Guerreiro;
+import modelo.Item;
 import modelo.LogDeBatalha;
 import modelo.Mago;
 import modelo.Monstro;
@@ -15,6 +18,7 @@ import javax.imageio.ImageIO;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
+import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -22,18 +26,26 @@ import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
+import javax.swing.KeyStroke;
 import javax.swing.Timer;
+import java.awt.AlphaComposite;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
+import java.awt.Image;
+import java.awt.RenderingHints;
+import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Random;
 import java.util.function.Supplier;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class TelaBatalha extends JFrame {
 
@@ -60,8 +72,14 @@ public class TelaBatalha extends JFrame {
     private JComboBox<String> comboFeitico;
     private JLabel lblManaHeroi;
     private JPanel painelFeitico;
+    private JComboBox<String> comboAcaoClerigo;
+    private JLabel lblFeClerigo;
+    private JPanel painelClerigo;
+    private JLabel lblSalvo;
     private JTextArea areaLog;
     private JProgressBar barraVidaHeroi;
+    private Timer timerPiscaHeroi;
+    private Timer timerPiscaMonstro;
     private JProgressBar barraVidaMonstro;
     private JLabel lblStatusHeroi;
     private JLabel lblStatusMonstro;
@@ -80,9 +98,16 @@ public class TelaBatalha extends JFrame {
     public TelaBatalha() {
         setTitle("Batalha");
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
-        setSize(560, 740);
+        setSize(560, 800);
         setLocationRelativeTo(null);
         setLayout(new BorderLayout(10, 10));
+
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                Musica.tocar("menu.wav");
+            }
+        });
 
         List<Personagem> herois = RepositorioHerois.listar();
 
@@ -155,7 +180,7 @@ public class TelaBatalha extends JFrame {
 
         painelInferior.add(painelTopoInferior, BorderLayout.NORTH);
 
-        JPanel painelMeio = new JPanel(new GridLayout(2, 1, 5, 5));
+        JPanel painelMeio = new JPanel(new GridLayout(3, 1, 5, 5));
 
         JPanel painelPocoes = new JPanel(new GridLayout(1, 3, 5, 5));
         lblPocoes = new JLabel("Poções de Vida: -", JLabel.CENTER);
@@ -176,22 +201,46 @@ public class TelaBatalha extends JFrame {
         painelFeitico.setVisible(false);
         painelMeio.add(painelFeitico);
 
+        painelClerigo = new JPanel(new GridLayout(1, 2, 5, 5));
+        comboAcaoClerigo = new JComboBox<>(new String[]{"Ataque Sagrado", "Cura Divina", "Purificar"});
+        lblFeClerigo = new JLabel(" ", JLabel.CENTER);
+        painelClerigo.add(comboAcaoClerigo);
+        painelClerigo.add(lblFeClerigo);
+        painelClerigo.setVisible(false);
+        painelMeio.add(painelClerigo);
+
         painelInferior.add(painelMeio, BorderLayout.CENTER);
 
-        JPanel painelBotoesAcao = new JPanel(new GridLayout(1, 2, 5, 5));
+        JPanel painelBotoesAcao = new JPanel(new BorderLayout(5, 5));
+        JPanel painelBotoesAtacarFugir = new JPanel(new GridLayout(1, 2, 5, 5));
         btnAtacar = new JButton("Atacar");
         btnAtacar.setEnabled(false);
         btnAtacar.addActionListener(e -> executarTurno());
         btnFugir = new JButton("Fugir");
         btnFugir.setEnabled(false);
         btnFugir.addActionListener(e -> tentarFugir());
-        painelBotoesAcao.add(btnAtacar);
-        painelBotoesAcao.add(btnFugir);
+        painelBotoesAtacarFugir.add(btnAtacar);
+        painelBotoesAtacarFugir.add(btnFugir);
+        painelBotoesAcao.add(painelBotoesAtacarFugir, BorderLayout.CENTER);
+
+        lblSalvo = new JLabel(" ", JLabel.CENTER);
+        painelBotoesAcao.add(lblSalvo, BorderLayout.SOUTH);
+
         painelInferior.add(painelBotoesAcao, BorderLayout.SOUTH);
 
         add(painelInferior, BorderLayout.SOUTH);
 
         atualizarPocoes();
+
+        // Atalhos: Espaço ou Enter também disparam o ataque, sem precisar clicar no mouse
+        getRootPane().registerKeyboardAction(
+                e -> { if (btnAtacar.isEnabled()) btnAtacar.doClick(); },
+                KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0),
+                JComponent.WHEN_IN_FOCUSED_WINDOW);
+        getRootPane().registerKeyboardAction(
+                e -> { if (btnAtacar.isEnabled()) btnAtacar.doClick(); },
+                KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0),
+                JComponent.WHEN_IN_FOCUSED_WINDOW);
     }
 
     private void iniciarBatalha() {
@@ -202,7 +251,16 @@ public class TelaBatalha extends JFrame {
             return;
         }
 
-        heroi.curarTotalmente();
+        if (timerPiscaHeroi != null) {
+            timerPiscaHeroi.stop();
+            timerPiscaHeroi = null;
+        }
+        if (timerPiscaMonstro != null) {
+            timerPiscaMonstro.stop();
+            timerPiscaMonstro = null;
+        }
+
+        heroi.curarParcial(Configuracao.getDouble("batalha.percentualCuraInicio", 0.3));
 
         caminhoParaChefao = heroi.isEnfrentaChefaoNaProximaBatalha();
         if (caminhoParaChefao) {
@@ -218,12 +276,15 @@ public class TelaBatalha extends JFrame {
             areaLog.setText("Um " + monstro.getNome() + " selvagem apareceu!\n");
         }
 
-        labelHeroi.setIcon(carregarIcone(spriteDoHeroi(heroi), false));
+        labelHeroi.setIcon(carregarIconeComEquipamento(heroi, spriteDoHeroi(heroi), false));
         labelMonstro.setIcon(carregarIcone(spriteDoMonstro(monstro), true));
         labelHeroi.setBounds(X_HEROI_BASE, Y_BASE, LARGURA_SPRITE, LARGURA_SPRITE);
         labelMonstro.setBounds(X_MONSTRO_BASE, Y_BASE, LARGURA_SPRITE, LARGURA_SPRITE);
 
         painelFeitico.setVisible(heroi instanceof Mago);
+        painelClerigo.setVisible(heroi instanceof Clerigo);
+
+        Musica.tocar(monstro instanceof Chefao ? "chefao.wav" : "batalha.wav");
 
         turnoHeroi = true;
         batalhaEmAndamento = true;
@@ -243,12 +304,45 @@ public class TelaBatalha extends JFrame {
 
         if (heroi instanceof Mago) {
             executarTurnoMago((Mago) heroi);
+        } else if (heroi instanceof Clerigo) {
+            executarTurnoClerigo((Clerigo) heroi);
         } else if (heroi instanceof Arqueiro) {
             desabilitarAcoesHeroi();
             animarProjetil(true, carregarIcone("flecha.png", false), () -> heroi.atacar(monstro));
         } else {
             desabilitarAcoesHeroi();
             animarCorpoACorpo(true, () -> heroi.atacar(monstro));
+        }
+    }
+
+    private void executarTurnoClerigo(Clerigo clerigo) {
+        String escolha = (String) comboAcaoClerigo.getSelectedItem();
+
+        if ("Cura Divina".equals(escolha)) {
+            if (!clerigo.temFeParaCuraDivina()) {
+                JOptionPane.showMessageDialog(this, "Fé insuficiente para Cura Divina!");
+                return;
+            }
+            executarAcaoSemAnimacao(clerigo::curaDivina);
+        } else if ("Purificar".equals(escolha)) {
+            if (!clerigo.temFeParaPurificar()) {
+                JOptionPane.showMessageDialog(this, "Fé insuficiente para Purificar!");
+                return;
+            }
+            executarAcaoSemAnimacao(clerigo::purificar);
+        } else {
+            desabilitarAcoesHeroi();
+            animarCorpoACorpo(true, () -> clerigo.atacarSagrado(monstro));
+        }
+    }
+
+    // Para ações que não atingem o monstro (cura/purificação): sem animação de golpe,
+    // resolve o efeito na hora e segue direto pro contra-ataque do monstro.
+    private void executarAcaoSemAnimacao(Supplier<String> acao) {
+        desabilitarAcoesHeroi();
+        resolverAtaque(true, acao);
+        if (batalhaEmAndamento) {
+            continuarSequenciaDeTurno();
         }
     }
 
@@ -286,6 +380,7 @@ public class TelaBatalha extends JFrame {
         if (sucesso) {
             areaLog.append(heroi.getNome() + " fugiu da batalha!\n");
             LogDeBatalha.registrar(heroi, monstro.getNome(), "FUGA");
+            heroi.registrarFuga();
             caminhoParaChefao = false;
             finalizarBatalha();
         } else {
@@ -311,12 +406,14 @@ public class TelaBatalha extends JFrame {
             }
             desabilitarAcoesHeroi();
             alvo.usarPocaoVida();
+            Som.tocar("pocao.wav");
             areaLog.append(alvo.getNome() + " bebeu uma Poção de Vida! (+30% de vida)\n");
             atualizarVidas();
             turnoHeroi = false;
             continuarSequenciaDeTurno();
         } else {
             alvo.usarPocaoVida();
+            Som.tocar("pocao.wav");
             JOptionPane.showMessageDialog(this, alvo.getNome() + " usou uma Poção de Vida!");
             atualizarPocoes();
             RepositorioHerois.salvar();
@@ -340,12 +437,14 @@ public class TelaBatalha extends JFrame {
             }
             desabilitarAcoesHeroi();
             mago.usarPocaoMana();
+            Som.tocar("pocao.wav");
             areaLog.append(mago.getNome() + " bebeu uma Poção de Mana! (+30% de mana)\n");
             atualizarVidas();
             turnoHeroi = false;
             continuarSequenciaDeTurno();
         } else {
             mago.usarPocaoMana();
+            Som.tocar("pocao.wav");
             JOptionPane.showMessageDialog(this, mago.getNome() + " usou uma Poção de Mana!");
             atualizarPocoes();
             RepositorioHerois.salvar();
@@ -416,13 +515,19 @@ public class TelaBatalha extends JFrame {
         timer.start();
     }
 
-    // Executa o dano de fato e faz o alvo tremer; ao final, decide o que acontece a seguir
+    // Executa o dano de fato e faz o alvo tremer (e piscar vermelho); ao final, decide o que
+    // acontece a seguir
     private void aplicarImpacto(boolean heroiAtacou, Supplier<String> acaoAtaque) {
         resolverAtaque(heroiAtacou, acaoAtaque);
 
         JLabel defensorLabel = heroiAtacou ? labelMonstro : labelHeroi;
         int xDefensor = heroiAtacou ? X_MONSTRO_BASE : X_HEROI_BASE;
         int yDefensor = defensorLabel.getY();
+
+        ImageIcon iconeOriginal = (ImageIcon) defensorLabel.getIcon();
+        if (iconeOriginal != null && iconeOriginal.getIconWidth() > 0) {
+            defensorLabel.setIcon(aplicarTintaVermelha(iconeOriginal));
+        }
 
         int[] passo = {0};
         Timer shake = new Timer(30, null);
@@ -432,6 +537,9 @@ public class TelaBatalha extends JFrame {
             defensorLabel.setLocation(xDefensor + deslocamento, yDefensor);
             if (passo[0] >= 4) {
                 defensorLabel.setLocation(xDefensor, yDefensor);
+                if (iconeOriginal != null) {
+                    defensorLabel.setIcon(iconeOriginal);
+                }
                 ((Timer) e.getSource()).stop();
                 continuarSequenciaDeTurno();
             }
@@ -447,15 +555,25 @@ public class TelaBatalha extends JFrame {
         }
 
         if (turnoHeroi) {
-            boolean vaiPular = heroi.estaAtordoado();
+            boolean vaiPular = heroi.estaAtordoado() || heroi.estaCongelado();
             String statusMsg = heroi.processarStatusInicioDeTurno();
             if (statusMsg != null) {
                 areaLog.append(statusMsg + "\n");
                 atualizarVidas();
             }
+
+            if (heroi instanceof Mago) {
+                String mensagemMana = ((Mago) heroi).regenerarManaPorTurno();
+                if (mensagemMana != null) {
+                    areaLog.append(mensagemMana + "\n");
+                    atualizarVidas();
+                }
+            }
+
             if (!heroi.estaVivo()) {
-                areaLog.append("\n" + heroi.getNome() + " sucumbiu ao veneno...\n");
+                areaLog.append("\n" + heroi.getNome() + " sucumbiu aos efeitos negativos...\n");
                 LogDeBatalha.registrar(heroi, monstro.getNome(), "DERROTA");
+                Som.tocar("derrota.wav");
                 mostrarGameOver();
                 caminhoParaChefao = false;
                 finalizarBatalha();
@@ -496,6 +614,8 @@ public class TelaBatalha extends JFrame {
         String resultado = acaoAtaque.get();
         areaLog.append(resultado + "\n");
         atualizarVidas();
+        tocarSomDeAcao(resultado);
+        mostrarNumeroFlutuanteSeHouver(heroiAtacou, resultado);
 
         if (!alvo.estaVivo()) {
             if (alvo == monstro) {
@@ -503,6 +623,7 @@ public class TelaBatalha extends JFrame {
             } else {
                 areaLog.append(GerenciadorDeBatalha.processarDerrota(heroi, monstro));
                 LogDeBatalha.registrar(heroi, monstro.getNome(), "DERROTA");
+                Som.tocar("derrota.wav");
                 mostrarGameOver();
                 caminhoParaChefao = false;
                 finalizarBatalha();
@@ -513,6 +634,70 @@ public class TelaBatalha extends JFrame {
         turnoHeroi = !turnoHeroi;
     }
 
+    // Escolhe o som de acordo com o texto do golpe: crítico/super efetivo, bloqueado/esquivado
+    // (sem som de impacto) ou um golpe comum.
+    private void tocarSomDeAcao(String resultado) {
+        if (resultado.contains("BLOQUEOU") || resultado.contains("ESQUIVOU")) {
+            return;
+        }
+        if (resultado.contains("CRÍTICO") || resultado.contains("SUPER EFETIVO")) {
+            Som.tocar("critico.wav");
+        } else if (resultado.contains("de dano")) {
+            Som.tocar("hit.wav");
+        }
+    }
+
+    // Lê o texto do golpe e mostra "-42" (vermelho) sobre quem apanhou, "BLOQUEIO"/"ESQUIVA"
+    // (cinza) quando não acertou, ou "+35" (verde) sobre quem se curou.
+    private void mostrarNumeroFlutuanteSeHouver(boolean heroiAtacou, String resultado) {
+        if (resultado.contains("BLOQUEOU")) {
+            mostrarNumeroFlutuante(!heroiAtacou, "BLOQUEIO!", new Color(150, 150, 150));
+            return;
+        }
+        if (resultado.contains("ESQUIVOU")) {
+            mostrarNumeroFlutuante(!heroiAtacou, "ESQUIVA!", new Color(150, 150, 150));
+            return;
+        }
+
+        Matcher danoMatch = Pattern.compile("causa (\\d+) de dano").matcher(resultado);
+        if (danoMatch.find()) {
+            mostrarNumeroFlutuante(!heroiAtacou, "-" + danoMatch.group(1), new Color(210, 40, 40));
+            return;
+        }
+
+        Matcher curaMatch = Pattern.compile("recupera (\\d+) de vida").matcher(resultado);
+        if (curaMatch.find()) {
+            mostrarNumeroFlutuante(heroiAtacou, "+" + curaMatch.group(1), new Color(46, 160, 67));
+        }
+    }
+
+    // Sobe um texto sobre o sprite do herói ou do monstro, desaparecendo aos poucos
+    private void mostrarNumeroFlutuante(boolean sobreHeroi, String texto, Color cor) {
+        JLabel numero = new JLabel(texto, JLabel.CENTER);
+        numero.setForeground(cor);
+        numero.setFont(numero.getFont().deriveFont(Font.BOLD, 18f));
+
+        int xBase = (sobreHeroi ? X_HEROI_BASE : X_MONSTRO_BASE) + LARGURA_SPRITE / 2 - 40;
+        int yBase = Y_BASE - 5;
+        numero.setBounds(xBase, yBase, 80, 24);
+        painelCena.add(numero);
+        painelCena.setComponentZOrder(numero, 0);
+        painelCena.repaint();
+
+        int[] passo = {0};
+        Timer timer = new Timer(30, null);
+        timer.addActionListener(e -> {
+            passo[0]++;
+            numero.setLocation(xBase, yBase - passo[0]);
+            if (passo[0] >= 25) {
+                ((Timer) e.getSource()).stop();
+                painelCena.remove(numero);
+                painelCena.repaint();
+            }
+        });
+        timer.start();
+    }
+
     // Trata a vitória sobre o inimigo atual. Se estivermos numa masmorra (a caminho de um
     // chefão) e ainda faltar gente pra enfrentar, o próximo inimigo aparece na mesma batalha,
     // sem cura completa - senão, a batalha termina normalmente.
@@ -520,6 +705,16 @@ public class TelaBatalha extends JFrame {
         String resultado = GerenciadorDeBatalha.processarVitoria(heroi, monstro);
         areaLog.append(resultado);
         LogDeBatalha.registrar(heroi, monstro.getNome(), "VITORIA");
+
+        if (!resultado.contains("não subiu de nível")) {
+            Som.tocar("levelup.wav");
+        }
+        if (resultado.contains("ÚNICO") || resultado.contains("EPICO") || resultado.contains("LENDARIO")) {
+            Som.tocar("item_raro.wav");
+        }
+        if (resultado.contains(" de ouro!")) {
+            Som.tocar("ouro.wav");
+        }
 
         boolean eraChefao = monstro instanceof Chefao;
 
@@ -531,6 +726,10 @@ public class TelaBatalha extends JFrame {
 
             labelMonstro.setIcon(carregarIcone(spriteDoMonstro(monstro), true));
             labelMonstro.setBounds(X_MONSTRO_BASE, Y_BASE, LARGURA_SPRITE, LARGURA_SPRITE);
+
+            if (monstro instanceof Chefao) {
+                Musica.tocar("chefao.wav");
+            }
 
             areaLog.append("\n" + (monstro instanceof Chefao
                     ? "Os corredores ficam silenciosos... o CHEFÃO " + monstro.getNome() + " aparece!"
@@ -544,6 +743,7 @@ public class TelaBatalha extends JFrame {
         }
 
         caminhoParaChefao = false;
+        Som.tocar("vitoria.wav");
         finalizarBatalha();
     }
 
@@ -556,9 +756,9 @@ public class TelaBatalha extends JFrame {
 
     private void atualizarVidas() {
         atualizarBarra(barraVidaHeroi, heroi.getNome() + " (Nv " + heroi.getNivel() + ")",
-                heroi.getVida(), heroi.getVidaMaxima());
+                heroi.getVida(), heroi.getVidaMaxima(), true);
         atualizarBarra(barraVidaMonstro, monstro.getNome(),
-                monstro.getVida(), monstro.getVidaMaxima());
+                monstro.getVida(), monstro.getVidaMaxima(), false);
 
         lblStatusHeroi.setText(descreverStatus(heroi));
         lblStatusMonstro.setText(descreverStatus(monstro));
@@ -566,6 +766,10 @@ public class TelaBatalha extends JFrame {
         if (heroi instanceof Mago) {
             Mago mago = (Mago) heroi;
             lblManaHeroi.setText("Mana: " + mago.getMana() + "/" + mago.getManaMaxima());
+        }
+        if (heroi instanceof Clerigo) {
+            Clerigo clerigo = (Clerigo) heroi;
+            lblFeClerigo.setText("Fé: " + clerigo.getFe() + "/" + clerigo.getFeMaxima());
         }
 
         atualizarPocoes();
@@ -576,8 +780,14 @@ public class TelaBatalha extends JFrame {
         if (p.isEnvenenado()) {
             sb.append("☠ Envenenado ");
         }
+        if (p.isQueimando()) {
+            sb.append("🔥 Queimando ");
+        }
         if (p.estaAtordoado()) {
-            sb.append("💫 Atordoado");
+            sb.append("💫 Atordoado ");
+        }
+        if (p.estaCongelado()) {
+            sb.append("❄ Congelado");
         }
         return sb.length() > 0 ? sb.toString() : " ";
     }
@@ -597,11 +807,41 @@ public class TelaBatalha extends JFrame {
         btnUsarPocaoMana.setVisible(ehMago);
     }
 
-    private void atualizarBarra(JProgressBar barra, String nome, int vidaAtual, int vidaMaxima) {
+    private void atualizarBarra(JProgressBar barra, String nome, int vidaAtual, int vidaMaxima, boolean ehHeroi) {
         barra.setMaximum(vidaMaxima);
         barra.setValue(vidaAtual);
         barra.setString(nome + " - " + vidaAtual + "/" + vidaMaxima);
-        barra.setForeground(corPorPercentual(vidaAtual, vidaMaxima));
+
+        double percentual = vidaMaxima > 0 ? (double) vidaAtual / vidaMaxima : 0;
+        boolean critica = vidaAtual > 0 && percentual < 0.2;
+
+        Timer timerAtual = ehHeroi ? timerPiscaHeroi : timerPiscaMonstro;
+
+        if (critica) {
+            if (timerAtual == null || !timerAtual.isRunning()) {
+                boolean[] alternar = {false};
+                Timer novoTimer = new Timer(400, e -> {
+                    alternar[0] = !alternar[0];
+                    barra.setForeground(alternar[0] ? new Color(255, 90, 90) : new Color(140, 20, 20));
+                });
+                novoTimer.start();
+                if (ehHeroi) {
+                    timerPiscaHeroi = novoTimer;
+                } else {
+                    timerPiscaMonstro = novoTimer;
+                }
+            }
+        } else {
+            if (timerAtual != null) {
+                timerAtual.stop();
+                if (ehHeroi) {
+                    timerPiscaHeroi = null;
+                } else {
+                    timerPiscaMonstro = null;
+                }
+            }
+            barra.setForeground(corPorPercentual(vidaAtual, vidaMaxima));
+        }
     }
 
     private Color corPorPercentual(int vidaAtual, int vidaMaxima) {
@@ -639,14 +879,24 @@ public class TelaBatalha extends JFrame {
 
         GerenciadorDeBatalha.processarFimDeBatalha(heroi);
         RepositorioHerois.salvar();
+        mostrarIndicadorSalvo();
 
         atualizarPocoes();
+    }
+
+    private void mostrarIndicadorSalvo() {
+        lblSalvo.setText("Progresso salvo ✓");
+        lblSalvo.setForeground(new Color(46, 160, 67));
+        Timer timer = new Timer(1800, e -> lblSalvo.setText(" "));
+        timer.setRepeats(false);
+        timer.start();
     }
 
     private String spriteDoHeroi(Personagem heroi) {
         if (heroi instanceof Guerreiro) return "thorin.png";
         if (heroi instanceof Mago) return "elysia.png";
         if (heroi instanceof Arqueiro) return "kael.png";
+        if (heroi instanceof Clerigo) return "clerigo.png";
         return "thorin.png";
     }
 
@@ -677,17 +927,137 @@ public class TelaBatalha extends JFrame {
             }
             BufferedImage imagem = ImageIO.read(in);
             if (espelhar) {
-                BufferedImage espelhada = new BufferedImage(
-                        imagem.getWidth(), imagem.getHeight(), BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g2 = espelhada.createGraphics();
-                g2.drawImage(imagem, imagem.getWidth(), 0, -imagem.getWidth(), imagem.getHeight(), null);
-                g2.dispose();
-                imagem = espelhada;
+                imagem = espelharImagem(imagem);
             }
             return new ImageIcon(imagem);
         } catch (IOException e) {
             System.out.println("Não foi possível carregar o sprite: " + arquivo);
             return new ImageIcon();
         }
+    }
+
+    // Monta o sprite do herói com um brilho (épico/lendário conforme o item de maior
+    // raridade equipado) e pequenos ícones do que está equipado, ao lado do personagem.
+    private ImageIcon carregarIconeComEquipamento(Personagem heroi, String arquivoSprite, boolean espelhar) {
+        try (InputStream in = getClass().getResourceAsStream("/sprites/" + arquivoSprite)) {
+            if (in == null) {
+                return new ImageIcon();
+            }
+            BufferedImage base = ImageIO.read(in);
+            if (espelhar) {
+                base = espelharImagem(base);
+            }
+
+            List<Item> equipados = heroi.getItensEquipados();
+            Item.Raridade maiorRaridade = maiorRaridade(equipados);
+
+            int largura = base.getWidth();
+            int altura = base.getHeight();
+            BufferedImage tela = new BufferedImage(largura, altura, BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g2 = tela.createGraphics();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            if (maiorRaridade == Item.Raridade.EPICO) {
+                desenharBrilho(g2, largura, altura, new Color(160, 90, 220), 0.30f);
+            } else if (maiorRaridade == Item.Raridade.LENDARIO) {
+                desenharBrilho(g2, largura, altura, new Color(250, 170, 60), 0.55f);
+            }
+
+            g2.drawImage(base, 0, 0, null);
+
+            // Ícones pequenos dos itens equipados, alinhados na base do sprite
+            int x = 2;
+            int y = altura - 18;
+            for (Item item : equipados) {
+                BufferedImage icone = carregarImagemIcone(nomeArquivoIcone(item.getTipo()));
+                if (icone != null) {
+                    g2.drawImage(icone, x, y, 16, 16, null);
+                    x += 18;
+                }
+            }
+
+            g2.dispose();
+            return new ImageIcon(tela);
+        } catch (IOException e) {
+            System.out.println("Não foi possível montar o sprite com equipamento: " + e.getMessage());
+            return carregarIcone(arquivoSprite, espelhar);
+        }
+    }
+
+    private Item.Raridade maiorRaridade(List<Item> itens) {
+        Item.Raridade maior = null;
+        for (Item item : itens) {
+            if (maior == null || item.getRaridade().ordinal() > maior.ordinal()) {
+                maior = item.getRaridade();
+            }
+        }
+        return maior;
+    }
+
+    // Brilho suave atrás do personagem: várias camadas semitransparentes da mesma cor
+    private void desenharBrilho(Graphics2D g2, int largura, int altura, Color cor, float intensidadeMaxima) {
+        int centroX = largura / 2;
+        int centroY = altura / 2;
+        int camadas = 10;
+
+        for (int i = camadas; i > 0; i--) {
+            float alpha = intensidadeMaxima * (i / (float) camadas) * 0.15f;
+            g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, Math.min(1f, alpha)));
+            g2.setColor(cor);
+            int raio = (int) (Math.min(largura, altura) * 0.5 * (i / (float) camadas));
+            g2.fillOval(centroX - raio, centroY - raio, raio * 2, raio * 2);
+        }
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f));
+    }
+
+    private BufferedImage carregarImagemIcone(String arquivo) {
+        try (InputStream in = getClass().getResourceAsStream("/icones/" + arquivo)) {
+            return in != null ? ImageIO.read(in) : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private String nomeArquivoIcone(Item.TipoItem tipo) {
+        switch (tipo) {
+            case CAPACETE: return "capacete.png";
+            case ARMADURA: return "armadura.png";
+            case BOTAS: return "botas.png";
+            case LUVAS: return "luvas.png";
+            case ANEL: return "anel.png";
+            case AMULETO: return "amuleto.png";
+            case ARMA: return "arma.png";
+            default: return "arma.png";
+        }
+    }
+
+    private BufferedImage espelharImagem(BufferedImage imagem) {
+        BufferedImage espelhada = new BufferedImage(
+                imagem.getWidth(), imagem.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = espelhada.createGraphics();
+        g2.drawImage(imagem, imagem.getWidth(), 0, -imagem.getWidth(), imagem.getHeight(), null);
+        g2.dispose();
+        return espelhada;
+    }
+
+    // Cria uma versão avermelhada do ícone atual, só sobre os pixels não-transparentes
+    // (silhueta do personagem) - usado como "flash" rápido no momento do impacto
+    private ImageIcon aplicarTintaVermelha(ImageIcon original) {
+        Image imagem = original.getImage();
+        int largura = imagem.getWidth(null);
+        int altura = imagem.getHeight(null);
+        if (largura <= 0 || altura <= 0) {
+            return original;
+        }
+
+        BufferedImage tingida = new BufferedImage(largura, altura, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g2 = tingida.createGraphics();
+        g2.drawImage(imagem, 0, 0, null);
+        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_ATOP, 0.55f));
+        g2.setColor(new Color(210, 30, 30));
+        g2.fillRect(0, 0, largura, altura);
+        g2.dispose();
+
+        return new ImageIcon(tingida);
     }
 }
